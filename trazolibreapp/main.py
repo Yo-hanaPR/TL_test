@@ -3,7 +3,8 @@ from tkinter import filedialog
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from PIL import Image, ImageTk
+from PIL import Image
+import numpy as np
 
 class ImagePlacerApp(tk.Tk):
     def __init__(self):
@@ -13,7 +14,8 @@ class ImagePlacerApp(tk.Tk):
         self.canvas = None
         self.ax = None
         self.current_image = None
-        self.drag_data = {"x": 0, "y": 0, "item": None}
+        self.drag_data = {"x": 0, "y": 0, "item": None, "action": None}
+        self.images = []  # Lista para almacenar las imágenes y sus posiciones
 
         self.create_widgets()
 
@@ -41,31 +43,58 @@ class ImagePlacerApp(tk.Tk):
     def upload_image(self):
         filename = filedialog.askopenfilename()
         if filename:
+            print("Ruta de la imagen:", filename)  # Imprimir la ruta de la imagen
             image = Image.open(filename)
-            image = image.resize((40, 40))  # Redimensionar a 100x100
-            image = ImageTk.PhotoImage(image)
-            self.current_image = image
-            self.ax.imshow(image, extent=(2, 7, 2, 7))
+            image = image.resize((100, 100))  # Redimensionar a 100x100
+            print("Imagen redimensionada:", image)  # Imprimir la imagen redimensionada
+            
+            # Convertir la imagen a un arreglo NumPy
+            image_array = np.array(image)
+
+
+            
+            # Mostrar la imagen en el plano cartesiano
+            img_obj = self.ax.imshow(image_array, extent=(2, 7, 2, 7))
+            
+            # Guardar la imagen y su objeto gráfico en la lista de imágenes
+            self.images.append({"image": image, "extent": [2, 7, 2, 7], "obj": img_obj})
             self.canvas.draw()
 
-
     def on_press(self, event):
-        if event.inaxes is not None and self.current_image is not None:
-            x, y = event.xdata, event.ydata
-            if 2 < x < 7 and 2 < y < 7:
-                self.drag_data["x"] = x
-                self.drag_data["y"] = y
-                self.drag_data["item"] = self.current_image
+        if event.inaxes is not None:
+            for img in self.images:
+                x0, x1, y0, y1 = img["extent"]
+                if x0 <= event.xdata <= x1 and y0 <= event.ydata <= y1:
+                    if abs(event.xdata - x1) < 0.2 and abs(event.ydata - y1) < 0.2:
+                        self.drag_data["action"] = "resize"
+                    else:
+                        self.drag_data["action"] = "move"
+                    self.drag_data["item"] = img
+                    self.drag_data["x"] = event.xdata
+                    self.drag_data["y"] = event.ydata
+                    break
+
 
     def on_release(self, event):
         self.drag_data["item"] = None
+        self.drag_data["action"] = None
 
     def on_motion(self, event):
-        if self.drag_data["item"] is not None:
+        if self.drag_data["item"] is not None and event.inaxes is not None:
             dx = event.xdata - self.drag_data["x"]
             dy = event.ydata - self.drag_data["y"]
-            self.ax.images.remove(self.drag_data["item"])
-            self.drag_data["item"] = self.ax.imshow(self.current_image, extent=(2 + dx, 7 + dx, 2 + dy, 7 + dy))
+            img = self.drag_data["item"]
+            x0, x1, y0, y1 = img["extent"]
+            
+            if self.drag_data["action"] == "move":
+                new_extent = [x0 + dx, x1 + dx, y0 + dy, y1 + dy]
+            elif self.drag_data["action"] == "resize":
+                new_extent = [x0, x0 + (x1 - x0) + dx, y0, y0 + (y1 - y0) + dy]
+            
+            img["extent"] = new_extent
+            img["obj"].set_extent(new_extent)
+            self.drag_data["x"] = event.xdata
+            self.drag_data["y"] = event.ydata
             self.canvas.draw()
 
 if __name__ == "__main__":
